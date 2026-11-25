@@ -2,6 +2,16 @@
 
 All notable changes to Social Memory will be documented here.
 
+## Community fork — 2026-11-26 (not an upstream release)
+
+- Added Chinese/responsive Threads DOM compatibility and bounded DIV-card extraction.
+- Added per-type preset/custom/unlimited counts, batched persistence, progress and cancellation.
+- Improved automatic pagination, delayed-loading retries and scroll position recovery.
+- Added a visible saved-list footer end signal.
+- Added browser-default, simplified/traditional Chinese, English, Korean and Japanese popup languages.
+- Documented attribution, license retention, focused/live validation and known limitations in [FORK_CHANGES.md](FORK_CHANGES.md).
+- The Windows native-host installer and complete-history guarantees remain unresolved.
+
 ## 0.2.0 - 2026-09-14
 
 - Added an unpacked Manifest V3 extension for collecting selected X and Threads likes, saves, and reposts from an everyday Chrome profile.
