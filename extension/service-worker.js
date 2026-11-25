@@ -7,6 +7,8 @@ import {
 } from './document-readers.js';
 
 const HOST_NAME = 'com.ohmyjiro.social_memory';
+import { readThreadsNavigationDiagnostics } from './local-diagnostics.js';
+import { runCollection, parseCollectionLimit, scrollCollectionDocument, readCollectionLoadState } from './collection-runner.js';
 const INSTALLATION_KEY = 'social-memory:installation-id';
 const DAILY_KEY = 'social-memory:daily';
 const DAILY_ALARM = 'social-memory-daily';
@@ -99,39 +101,49 @@ function normalizedHandle(value) {
 }
 
 async function readIdentityFromTab(chromeApi, tabId, platform) {
-  return execute(chromeApi, tabId, platform === 'x' ? readXIdentityDocument : readThreadsIdentityDocument);
+  const identity = await execute(chromeApi, tabId, platform === 'x' ? readXIdentityDocument : readThreadsIdentityDocument);
+  if (platform === 'threads' && !identity?.handle) {
+    return { ...identity, diagnostics: await execute(chromeApi, tabId, readThreadsNavigationDiagnostics) };
+  }
+  return identity;
 }
 
-async function collectTab(chromeApi, tabId, platform, surface, limit) {
+async function collectTab(chromeApi, tabId, platform, surface, limit, request, options) {
   const reader = platform === 'x' ? readXPostsDocument : readThreadsPostsDocument;
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  try {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
     if (await execute(chromeApi, tabId, readSurfaceDocument, [surface])) break;
-    if (attempt === 19) throw new Error('The requested collection page could not be verified');
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (attempt === 59) throw new Error('The requested collection page could not be verified');
+    if(options.isCancelled()) return {count:0,reason:'cancelled'};
+    await options.wait(500);
   }
-  const items = new Map();
-  let idle = 0;
-  for (let round = 0; round < 40 && items.size < limit; round += 1) {
-    const snapshot = await execute(chromeApi, tabId, reader);
-    if (!snapshot?.authenticated) throw new Error('The signed-in account could not be verified');
-    const before = items.size;
-    for (const item of snapshot.items ?? []) {
-      items.set(item.postId, { ...item, text: item.text?.slice(0, 10_000) ?? '' });
-      if (items.size >= limit) break;
+  return await runCollection({
+    limit,
+    readPage: async()=>({...await execute(chromeApi,tabId,reader),...await execute(chromeApi,tabId,readCollectionLoadState,[surface])}),
+    scrollPage:()=>execute(chromeApi,tabId,scrollCollectionDocument),
+    wait:options.wait,
+    saveBatch:options.saveBatch,
+    verifyIdentity:options.verifyIdentity,
+    isCancelled:options.isCancelled,
+    onProgress:options.onProgress,
+  }); } catch(error) {
+    if (platform==='threads') {
+    const diagnostics=await execute(chromeApi,tabId,readThreadsNavigationDiagnostics);
+    await request('health',{diagnostics:{...diagnostics,surface,error:error.message}}).catch(()=>{});
     }
-    idle = items.size === before ? idle + 1 : 0;
-    if (snapshot.empty || idle >= 3 || items.size >= limit) break;
-    await execute(chromeApi, tabId, () => window.scrollTo(0, document.body.scrollHeight));
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    throw error;
   }
-  return [...items.values()].slice(0, limit);
 }
 
 export async function collectPlatform(platform, selectedCaptureKinds, limit = 100, {
   chromeApi = globalThis.chrome,
   expectedHandle,
   request = nativeRequest,
+  wait = ms=>new Promise(resolve=>setTimeout(resolve,ms)),
+  isCancelled = ()=>false,
+  onProgress = ()=>{},
 } = {}) {
+  parseCollectionLimit(limit);
   if (!['x', 'threads'].includes(platform)) throw new Error('Unsupported collection platform');
   const kinds = [...new Set(selectedCaptureKinds ?? [])];
   if (!kinds.length || kinds.some((kind) => !['like', 'save', 'repost'].includes(kind))) {
@@ -140,32 +152,52 @@ export async function collectPlatform(platform, selectedCaptureKinds, limit = 10
   const installationId = await getInstallationId(chromeApi.storage.local);
   const summary = { platform, items: 0, streams: [] };
   for (const kind of kinds) {
+    if(isCancelled()) break;
+    await request('health',{collectionTrace:{platform,kind,stage:'opening',recordedAt:new Date().toISOString()}});
     const route = routeFor(platform, kind, expectedHandle);
-    const tab = await chromeApi.tabs.create({ url: route, active: false });
+    const tab = await chromeApi.tabs.create({ url: route, active: true });
     try {
       await waitForTab(chromeApi, tab.id);
-      const identity = await readIdentityFromTab(chromeApi, tab.id, platform);
+      let identity;
+      for(let attempt=0;attempt<20;attempt++) {
+        identity=await execute(chromeApi,tab.id,platform==='threads'?readThreadsIdentityDocument:readXIdentityDocument);
+        if(identity?.handle||isCancelled()) break;
+        await wait(500);
+      }
       if (normalizedHandle(identity?.handle) !== normalizedHandle(expectedHandle)) {
         const error = new Error('Authenticated account changed; reconnect this Chrome profile');
         error.code = 'account_mismatch';
         throw error;
       }
-      const items = await collectTab(chromeApi, tab.id, platform, surfaceFor(platform, kind), Math.min(100, limit));
-      const verified = await readIdentityFromTab(chromeApi, tab.id, platform);
+      const verifyIdentity=async()=>{
+      const verified = await execute(chromeApi, tab.id, platform==='threads'?readThreadsIdentityDocument:readXIdentityDocument);
       if (normalizedHandle(verified?.handle) !== normalizedHandle(expectedHandle)) {
         const error = new Error('Authenticated account changed before ingest');
         error.code = 'account_mismatch';
         throw error;
       }
-      const result = await request('ingest', {
+      };
+      const saved=await collectTab(chromeApi,tab.id,platform,surfaceFor(platform,kind),limit,request,{
+        wait,isCancelled,verifyIdentity,
+        onProgress:async progress=>{
+          const trace={...progress,kind,total:summary.items+progress.count};
+          await onProgress(trace);
+          await request('health',{collectionTrace:{...trace,recordedAt:new Date().toISOString(),platform}});
+        },
+        saveBatch:items=>request('ingest', {
         installationId,
         platform,
-        authenticatedIdentity: verified.handle,
+        authenticatedIdentity: expectedHandle,
         kind,
         items,
+      }),
       });
-      summary.items += items.length;
-      summary.streams.push({ kind, count: items.length, result });
+      summary.items += saved.count;
+      summary.streams.push({kind,...saved});
+      await request('health',{collectionTrace:{platform,kind,...saved,stage:'finished',recordedAt:new Date().toISOString()}});
+    } catch(error) {
+      await request('health',{collectionTrace:{platform,kind,stage:'failed',error:error.message,recordedAt:new Date().toISOString()}}).catch(()=>{});
+      throw error;
     } finally {
       await chromeApi.tabs.remove(tab.id).catch(() => {});
     }
@@ -184,8 +216,10 @@ export function createController({
   activeTab = () => defaultActiveTab(chromeApi),
   readIdentity = (tab, platform) => readIdentityFromTab(chromeApi, tab.id, platform),
   request = nativeRequest,
-  collect = (platform, kinds, limit, expectedHandle) => collectPlatform(platform, kinds, limit, { chromeApi, expectedHandle, request }),
+  collect = (platform, kinds, limit, expectedHandle, options={}) => collectPlatform(platform, kinds, limit, { chromeApi, expectedHandle, request, ...options }),
 } = {}) {
+  let job={status:'idle',total:0};
+  let cancelled=false;
   async function currentPlatform() {
     const tab = await activeTab();
     const platform = detectPlatform(tab);
@@ -200,15 +234,40 @@ export function createController({
   }
 
   async function handleUnsafe(message) {
+    if(message?.type==='get-job') return job;
+    if(message?.type==='stop-collection') { cancelled=true;return job; }
+    if(message?.type==='set-collection-limit') {
+      parseCollectionLimit(message.limit);
+      await storage.set({'social-memory:collection-limit':message.limit});
+      return {limit:message.limit};
+    }
+    if(message?.type==='start-collection') {
+      if(job.status==='running') throw new Error('已有采集任务运行，请等待或停止');
+      const limit=message.limit??100;parseCollectionLimit(limit);
+      const {platform}=await currentPlatform();
+      const settings=(await storage.get(settingsKey(platform)))[settingsKey(platform)];
+      if(!settings?.connected) throw new Error('Connect this Chrome profile first');
+      cancelled=false;job={status:'running',total:0,limit,kind:null};
+      // Keep native messaging open for the lifetime of the background job.
+      const keepAlive=chromeApi?.runtime?.connectNative?.(HOST_NAME);
+      Promise.resolve().then(()=>collect(platform,settings.selectedCaptureKinds,limit,settings.handle,{
+        isCancelled:()=>cancelled,
+        onProgress:progress=>{job={...job,...progress};},
+      })).then(result=>{job={...job,status:cancelled?'cancelled':'done',total:result.items,result};})
+        .catch(error=>{job={...job,status:'error',error:error.message};})
+        .finally(()=>{try{keepAlive?.disconnect();}catch{}});
+      return {started:true};
+    }
     if (message?.type === 'get-state') {
       const { tab, platform } = await currentPlatform();
       const identity = await readIdentity(tab, platform);
       const settings = (await storage.get(settingsKey(platform)))[settingsKey(platform)] ?? null;
       let hostReady = true;
-      try { await request('health', {}); } catch { hostReady = false; }
-      return { platform, handle: identity?.handle ?? null, settings, hostReady, daily: (await storage.get(DAILY_KEY))[DAILY_KEY] === true };
+      try { await request('health', identity?.diagnostics ? {diagnostics:identity.diagnostics} : {}); } catch { hostReady = false; }
+      return { platform, handle: identity?.handle ?? null, settings, hostReady, daily: (await storage.get(DAILY_KEY))[DAILY_KEY] === true, collectionLimit:(await storage.get('social-memory:collection-limit'))['social-memory:collection-limit']??100,job };
     }
     if (message?.type === 'connect') {
+      if(job.status==='running') throw new Error('采集中，请先停止任务再修改采集类型');
       const { tab, platform } = await currentPlatform();
       const identity = await readIdentity(tab, platform);
       if (!identity?.handle) throw new Error('The signed-in account could not be detected');
@@ -219,10 +278,12 @@ export function createController({
       return result;
     }
     if (message?.type === 'collect-now') {
+      if(job.status==='running') throw new Error('已有采集任务运行');
       const { platform } = await currentPlatform();
       const settings = (await storage.get(settingsKey(platform)))[settingsKey(platform)];
       if (!settings?.connected) throw new Error('Connect this Chrome profile first');
-      return collect(platform, settings.selectedCaptureKinds, 100, settings.handle);
+      const limit=message.limit??100;parseCollectionLimit(limit);
+      return collect(platform, settings.selectedCaptureKinds, limit, settings.handle);
     }
     if (message?.type === 'set-daily') {
       await storage.set({ [DAILY_KEY]: message.enabled === true });
@@ -238,6 +299,7 @@ export function createController({
   }
 
   async function collectConnectedPlatforms() {
+    if(job.status==='running') return;
     for (const platform of ['x', 'threads']) {
       const settings = (await storage.get(settingsKey(platform)))[settingsKey(platform)];
       if (!settings?.connected) continue;
