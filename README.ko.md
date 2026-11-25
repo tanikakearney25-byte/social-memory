@@ -1,3 +1,13 @@
+# Social Memory CH — 커뮤니티 포크
+
+이 저장소는 **ohmyjiro**의 [ohmyjiro/social-memory](https://github.com/ohmyjiro/social-memory)를 기반으로 한 커뮤니티 포크입니다. 원작자의 공식 배포판이 아니며, 원작자의 승인이나 보증을 의미하지 않습니다.
+
+Threads 페이지 호환성, 수집 개수 선택과 제한 없음, 자동 스크롤·중지·진행 상황 표시, 중국어·영어·한국어·일본어 인터페이스를 추가했습니다. 자세한 변경 사항과 검증 범위는 [FORK_CHANGES.md](FORK_CHANGES.md)를 참고하세요. 원본 [라이선스와 저작권 고지](LICENSE.md)는 그대로 유지됩니다.
+
+아래에는 원본 프로젝트의 설명을 보존했습니다. 이 포크의 기능 상태는 위의 변경 안내와 함께 확인하세요.
+
+---
+
 ![두 Chrome 프로필에서 선택한 X와 Threads 활동을 안전한 로컬 브리지로 보내 하나의 검색 가능한 Social Memory 자료실에 보관하는 흐름](assets/readme/social-memory-extension-guide.png)
 
 # Social Memory
