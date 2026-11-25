@@ -1,3 +1,21 @@
+# Social Memory CH — 社区修改版
+
+本仓库 fork 自 [ohmyjiro/social-memory](https://github.com/ohmyjiro/social-memory)，原项目由 **ohmyjiro** 开发。这里维护的是社区兼容性改动，**不是原作者的官方发行版，也不代表原作者认可这些改动**。
+
+本分支主要增加：
+- 中文及响应式 Threads 页面识别、DIV 帖子解析；
+- 自定义采集数量与无上限模式、分批保存、进度和停止按钮；
+- 自动滚动、延迟加载重试、滚动位置恢复及收藏页脚结束判断；
+- 简体中文、繁體中文、English、한국어、日本語及跟随浏览器的界面语言选择。
+
+完整改动、验证结果与限制见 [FORK_CHANGES.md](FORK_CHANGES.md)。原版许可证和版权声明保留在 [LICENSE.md](LICENSE.md)；本 fork 没有重新授权为 MIT/Apache 等许可证。
+
+**This is an independent community fork of [Social Memory by ohmyjiro](https://github.com/ohmyjiro/social-memory), not an official or upstream-endorsed release.** It adds Threads DOM compatibility, collection controls, scrolling fixes and multilingual popup UI. See [fork changes and limitations](FORK_CHANGES.md). The upstream license and copyright notices remain in effect.
+
+以下保留上游原始说明，涉及功能状态时请同时参考上述分支说明。
+
+---
+
 ![Two Chrome profiles collect selected X and Threads signals through a secure local bridge into one searchable Social Memory library.](assets/readme/social-memory-extension-guide.png)
 
 # Social Memory
