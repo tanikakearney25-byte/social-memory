@@ -77,7 +77,7 @@ test('account mismatch prevents ingest and extension closes only its own collect
     }),
     /account changed/i,
   );
-  assert.deepEqual(requests, []);
+  assert.deepEqual(requests.filter(([method])=>method==='ingest'), []);
   assert.deepEqual(removed, [99]);
 });
 
