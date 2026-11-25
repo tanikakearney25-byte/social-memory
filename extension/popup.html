@@ -9,21 +9,37 @@
 <body>
   <header>
     <span class="mark" aria-hidden="true">S</span>
-    <div><h1>Social Memory</h1><p id="identity">Checking this profile…</p></div>
+    <div><h1>Social Memory</h1><p id="identity" data-i18n="checking">Checking this profile…</p></div>
   </header>
   <main>
-    <p id="host" class="status" role="status">Checking local bridge…</p>
-    <fieldset>
-      <legend>Collect from this profile</legend>
-      <label>Likes <input type="checkbox" name="capture-kind" value="like"></label>
-      <label>Saves <input type="checkbox" name="capture-kind" value="save" checked></label>
-      <label>Reposts <input type="checkbox" name="capture-kind" value="repost"></label>
-    </fieldset>
-    <div class="actions">
-      <button id="connect" type="button">Connect profile</button>
-      <button id="collect-now" class="secondary" type="button">Collect now</button>
+    <div class="language-row"><label for="interface-language" data-i18n="language">Language</label>
+      <select id="interface-language"><option value="auto" data-i18n="auto">Browser default</option><option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="en">English</option><option value="ko">한국어</option><option value="ja">日本語</option></select>
     </div>
-    <label class="daily"><input id="daily" type="checkbox"> Collect once daily while Chrome is running</label>
+    <p id="host" class="status" role="status" data-i18n="bridgeChecking">Checking local bridge…</p>
+    <fieldset>
+      <legend data-i18n="choices">Collect from this profile</legend>
+      <label><input type="checkbox" name="capture-kind" value="like"><span data-i18n="like">Likes</span></label>
+      <label><input type="checkbox" name="capture-kind" value="save" checked><span data-i18n="save">Saves</span></label>
+      <label><input type="checkbox" name="capture-kind" value="repost"><span data-i18n="repost">Reposts</span></label>
+    </fieldset>
+    <label class="quantity" for="collection-limit" data-i18n="quantity">每类采集数量</label>
+    <select id="collection-limit">
+      <option value="3" data-i18n="testCount">3 条（测试）</option>
+      <option value="10" data-i18n="count" data-n="10">10 条</option>
+      <option value="50" data-i18n="count" data-n="50">50 条</option>
+      <option value="100" selected data-i18n="count" data-n="100">100 条</option>
+      <option value="500" data-i18n="count" data-n="500">500 条</option>
+      <option value="custom" data-i18n="custom">自定义</option>
+      <option value="unlimited" data-i18n="unlimited">无上限（持续抓取历史）</option>
+    </select>
+    <input id="custom-limit" type="number" min="1" step="1" placeholder="输入每类数量" data-i18n-placeholder="customPlaceholder" hidden>
+    <p class="hint" data-i18n="hint">Keep the collection tab visible.</p>
+    <div class="actions">
+      <button id="connect" type="button" data-i18n="connect">Connect profile</button>
+      <button id="collect-now" class="secondary" type="button" data-i18n="collect">Collect now</button>
+    </div>
+    <button id="stop-collection" class="secondary" type="button" data-i18n="stop" hidden>停止采集（保留已保存内容）</button>
+    <label class="daily"><input id="daily" type="checkbox"><span data-i18n="daily">Collect once daily while Chrome is running</span></label>
     <p id="result" class="result" role="status" aria-live="polite"></p>
   </main>
   <script type="module" src="popup.js"></script>
